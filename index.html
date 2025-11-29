@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>🔍 Smart Search Autocomplete</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; 
+            max-width: 700px; margin: 40px auto; padding: 20px; line-height: 1.6;
+        }
+        h1 { color: #1a1a1a; margin-bottom: 8px; font-size: 28px; font-weight: 600; }
+        .subtitle { color: #666; margin-bottom: 30px; }
+        
+        input { 
+            width: 100%; padding: 16px 20px; font-size: 16px; 
+            border: 2px solid #e1e5e9; border-radius: 12px; outline: none;
+            transition: all 0.2s ease; background: white;
+        }
+        input:focus { border-color: #0066cc; box-shadow: 0 0 0 3px rgba(0,102,204,0.1); }
+        
+        .suggestions { 
+            background: white; border: 1px solid #e1e5e9; border-radius: 12px; 
+            margin-top: 8px; max-height: 240px; overflow-y: auto; box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        }
+        .suggestion { 
+            padding: 16px 20px; cursor: pointer; border-bottom: 1px solid #f3f4f6; 
+            transition: background 0.15s ease;
+        }
+        .suggestion:last-child { border-bottom: none; }
+        .suggestion:hover { background: #f8f9fa; }
+        .suggestion.high { background: linear-gradient(90deg, #0066cc20, transparent); }
+        .suggestion strong { color: #1a1a1a; }
+        .score { float: right; color: #666; font-size: 14px; font-weight: 500; }
+        
+        .recent-searches { 
+            margin-top: 30px; padding: 24px; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-radius: 12px; border-left: 5px solid #28a745;
+        }
+        .recent-searches h3 { margin: 0 0 16px 0; color: #28a745; font-size: 18px; }
+        .search-item { 
+            padding: 12px 16px; margin: 4px 0; background: white; 
+            border-radius: 8px; border-left: 3px solid #28a745;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .empty-state { 
+            text-align: center; color: #666; padding: 40px; font-style: italic;
+            background: rgba(255,255,255,0.5);
+        }
+        
+        .stats { 
+            margin-top: 24px; padding: 16px; background: #f8f9fa; 
+            border-radius: 8px; font-size: 14px; color: #666;
+            display: flex; justify-content: space-between;
+        }
+        
+        .hidden { display: none; }
+
+        /* NEW: Success message */
+        #statusMessage {
+            margin-top: 20px;
+            padding: 12px 18px;
+            background: #28a745;
+            color: white;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 600;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔍 Smart Search Autocomplete</h1>
+    <p class="subtitle">Type to see AI-powered suggestions from your search history. Press ENTER to save.</p>
+    
+    <input 
+    type="text" 
+    id="searchInput"
+    autocomplete="off"
+    autocorrect="off"
+    autocapitalize="off"
+    spellcheck="false"
+    placeholder="Try 'qiskit', 'football scores', 'quantum ml'..."
+>
+
+    <div id="suggestions" class="suggestions hidden"></div>
+
+    <!-- NEW STATUS MESSAGE -->
+    <div id="statusMessage">Search completed!</div>
+
+    <div id="stats" class="stats hidden"></div>
+
+    <script>
+        const API_BASE = 'http://localhost:8000';
+        const input = document.getElementById('searchInput');
+        const suggestionsDiv = document.getElementById('suggestions');
+        const recentSearchesDiv = document.getElementById('recentSearches');
+        const recentListDiv = document.getElementById('recentList');
+        const statsDiv = document.getElementById('stats');
+
+        const statusMessage = document.getElementById('statusMessage');
+
+        let debounceTimer;
+        let isSearching = false;
+
+        // Show success message
+        function showStatusMessage() {
+            statusMessage.style.display = 'block';
+            setTimeout(() => {
+                statusMessage.style.display = 'none';
+            }, 2000);
+        }
+
+        input.addEventListener('input', () => {
+            clearTimeout(debounceTimer);
+            const query = input.value.trim();
+            
+            debounceTimer = setTimeout(() => {
+                if (query.length >= 2 && !isSearching) {
+                    fetchSuggestions(query);
+                } else {
+                    hideSuggestions();
+                }
+            }, 200);
+        });
+
+        input.addEventListener('keydown', async (e) => {
+            if (e.key === 'Enter' && !isSearching) {
+                e.preventDefault();
+                const query = input.value.trim();
+                if (query.length >= 2) {
+                    await saveSearch(query);
+                }
+            }
+        });
+
+        async function fetchSuggestions(query) {
+            try {
+                const response = await fetch(`${API_BASE}/suggest?query=${encodeURIComponent(query)}&k=6`);
+                const suggestions = await response.json();
+                displaySuggestions(suggestions);
+            } catch (error) {
+                console.error('Suggestions error:', error);
+                hideSuggestions();
+            }
+        }
+
+        function displaySuggestions(suggestions) {
+            suggestionsDiv.innerHTML = '';
+            if (!suggestions?.length) {
+                hideSuggestions();
+                return;
+            }
+
+            suggestions.forEach(suggestion => {
+                const div = document.createElement('div');
+                div.className = `suggestion ${suggestion.score > 0.7 ? 'high' : ''}`;
+                div.innerHTML = `
+                    <strong>${suggestion.query}</strong>
+                    <span class="score">${Math.round(suggestion.score * 100)}%</span>
+                `;
+                div.addEventListener('click', () => saveSearch(suggestion.query));
+                suggestionsDiv.appendChild(div);
+            });
+            suggestionsDiv.classList.remove('hidden');
+        }
+
+        function hideSuggestions() {
+            suggestionsDiv.classList.add('hidden');
+            suggestionsDiv.innerHTML = '';
+        }
+
+        async function saveSearch(query) {
+            if (isSearching) return;
+            
+            isSearching = true;
+            hideSuggestions();
+
+            input.value = ""; // ← FIX: Do NOT show saved query in input
+
+            try {
+                await fetch(`${API_BASE}/search`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query })
+                });
+
+                showStatusMessage();
+
+                await loadRecentSearches();
+                await loadStats();
+                
+            } catch (error) {
+                console.error('Save error:', error);
+            } finally {
+                isSearching = false;
+            }
+        }
+
+        async function loadRecentSearches() {
+            try {
+                const response = await fetch(`${API_BASE}/recent?limit=8`);
+                const recent = await response.json();
+                
+                recentListDiv.innerHTML = '';
+                if (recent.length) {
+                    recent.forEach(search => {
+                        const div = document.createElement('div');
+                        div.className = 'search-item';
+                        div.innerHTML = `<strong>${search.query}</strong>`;
+                        div.addEventListener('click', () => {
+                            input.value = search.query;
+                            saveSearch(search.query);
+                        });
+                        recentListDiv.appendChild(div);
+                    });
+                    recentSearchesDiv.classList.remove('hidden');
+                } else {
+                    recentListDiv.innerHTML = '<div class="empty-state">No searches yet. Start typing!</div>';
+                    recentSearchesDiv.classList.add('hidden');
+                }
+            } catch (error) {
+                console.error('Recent error:', error);
+            }
+        }
+
+        async function loadStats() {
+            try {
+                const response = await fetch(`${API_BASE}/stats`);
+                const stats = await response.json();
+                statsDiv.innerHTML = `
+                    <span>Total searches: ${stats.total_searches}</span>
+                    <span>Index: ${stats.index_size_mb.toFixed(1)} MB</span>
+                `;
+                statsDiv.classList.remove('hidden');
+            } catch (error) {
+                console.error('Stats error:', error);
+            }
+        }
+
+        loadRecentSearches();
+        loadStats();
+
+        document.addEventListener('click', (e) => {
+            if (!input.contains(e.target) && !suggestionsDiv.contains(e.target)) {
+                hideSuggestions();
+            }
+        });
+    </script>
+</body>
+</html>
