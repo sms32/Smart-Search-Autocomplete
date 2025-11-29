@@ -12,6 +12,7 @@ A production-ready semantic search autocomplete engine that learns from your sea
 - Zero external DB - single JSONL + FAISS file
 - Semantic understanding: context-aware (football/ML/quantum)
 
+```bash
 ## PROJECT STRUCTURE
 
 search-autocomplete/
@@ -22,4 +23,35 @@ search-autocomplete/
 ├── index.faiss                 # FAISS vector index (~4MB @ 10k searches)
 ├── requirements.txt            # Python deps (FastAPI, sentence-transformers, faiss-cpu)
 └── README.md                   # This file
+```
+
+## SETUP INSTRUCTIONS
+
+ 1. Clone the repository
+```bash
+git https://github.com/sms32/Smart-Search-Autocomplete.git
+cd Smart-Search-Autocomplete
+```
+ 2. (Optional) Create a virtual environment
+```bash
+python -m venv venv
+source venv/bin/activate
+# On Windows: venv\Scripts\activate
+```
+ 3. Install dependencies
+```bash
+pip install -r requirements.txt
+```
+ 4. Run the FastApi Server
+```bash
+uvicorn app:app --reload --port 8000
+```
+5. Frontend Setup
+```bash
+open live server in vs code for the index.html file
+```
+
+## LICENSE
+
+This project is open-source and free to use for personal, academic, or non-commercial purposes.
 
